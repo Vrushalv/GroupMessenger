@@ -1,0 +1,233 @@
+package edu.buffalo.cse.cse486586.groupmessenger;
+
+import java.io.FileOutputStream;
+import java.io.ObjectOutputStream;
+import java.util.HashMap;
+
+import android.content.ContentProvider;
+import android.content.ContentResolver;
+import android.content.ContentUris;
+import android.content.ContentValues;
+import android.content.Context;
+import android.database.Cursor;
+import android.database.SQLException;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
+import android.database.sqlite.SQLiteQueryBuilder;
+import android.net.Uri;
+import android.util.Log;
+
+/**
+ * GroupMessengerProvider is a key-value table. Once again, please note that we do not implement
+ * full support for SQL as a usual ContentProvider does. We re-purpose ContentProvider's interface
+ * to use it as a key-value table.
+ * 
+ * Please read:
+ * 
+ * http://developer.android.com/guide/topics/providers/content-providers.html
+ * http://developer.android.com/reference/android/content/ContentProvider.html
+ * 
+ * before you start to get yourself familiarized with ContentProvider.
+ * 
+ * There are two methods you need to implement---insert() and query(). Others are optional and
+ * will not be tested.
+ * 
+ * @author stevko
+ *
+ */
+public class GroupMessengerProvider extends ContentProvider {
+
+
+	static final String key = "key";
+	static final String value = "value";
+
+	static final String PROVIDER_NAME = "edu.buffalo.cse.cse486586.groupmessenger.provider";
+	static final String URL = "content://" + PROVIDER_NAME + "/NameValueTable";
+	static final Uri CONTENT_URI = Uri.parse(URL);
+
+	static public int insertUpdateFlag = 0;
+
+	private static HashMap<String, String> hmKeyValue;
+
+
+	private SQLiteDatabase db;
+	static final String DATABASE_NAME = "Ordering";
+	static final String TABLE_NAME = "KeyVal";
+	static final int DATABASE_VERSION = 1;
+	static final String CREATE_DB_TABLE = 
+			" CREATE TABLE " + TABLE_NAME +
+			" ( key TEXT PRIMARY KEY, " + 
+			" value TEXT NOT NULL);";
+
+	private static class DatabaseHelper extends SQLiteOpenHelper {
+		DatabaseHelper(Context context){
+			super(context, DATABASE_NAME, null, DATABASE_VERSION);
+		}
+
+		@Override
+		public void onCreate(SQLiteDatabase db)
+		{
+			Log.d("DB", "Start onCreate");
+
+			db.execSQL(CREATE_DB_TABLE);
+			Log.d("DB", "END onCreate");
+		}
+
+		@Override
+		public void onUpgrade(SQLiteDatabase db, int oldVersion, 
+				int newVersion) {
+			Log.d("DB", "Start onUpgrade");
+			db.execSQL("DROP TABLE IF EXISTS " +  TABLE_NAME);
+			Log.d("DB", "DROP");
+			onCreate(db);
+			Log.d("DB", "End onUpgrade");
+		}		
+	}
+
+
+	public static void insertContent(String rcvdkey, String rcvdvalue, ContentResolver contRes) {
+		if(rcvdkey!=null)
+		{
+			Log.i("I-rcvdkey", rcvdkey);
+		}
+		ContentValues nameValueProvider= new ContentValues();
+		nameValueProvider.put(key, rcvdkey);
+		nameValueProvider.put(value, rcvdvalue);
+		contRes.insert(GroupMessengerProvider.CONTENT_URI, nameValueProvider);
+	}
+	@Override
+	public int delete(Uri uri, String selection, String[] selectionArgs) {
+		// You do not need to implement this.
+		return 0;
+	}
+
+	@Override
+	public String getType(Uri uri) {
+		// You do not need to implement this.
+		return null;
+	}
+
+	@Override
+	public Uri insert(Uri uri, ContentValues values) {
+		/*
+		 * TODO: You need to implement this method. Note that values will have two columns (a key
+		 * column and a value column) and one row that contains the actual (key, value) pair to be
+		 * inserted.
+		 * 
+		 * For actual storage, you can use any option. If you know how to use SQL, then you can use
+		 * SQLite. But this is not a requirement. You can use other storage options, such as the
+		 * internal storage option that I used in PA1. If you want to use that option, please
+		 * take a look at the code for PA1.
+		 */
+
+		long rowID=0;
+		try
+		{
+			Log.i("II-keys", values.get(key).toString());
+			Log.i("III-values", values.get(value).toString());
+			rowID = db.replace(	TABLE_NAME, null, values);
+			//rowID = db.insert(	TABLE_NAME, null, values);
+			insertUpdateFlag = 1;
+		}
+		catch(Exception e)
+		{
+			String g = e.getMessage();
+			Log.d("DB", g);
+		}
+
+		int rowsUpdated = 0;
+		if(rowID == -1)
+		{ 
+
+			String whereClause =  key +"="+ '"'+values.get(key)+'"';
+			try 
+			{
+				if(insertUpdateFlag == 1)
+				{
+					rowsUpdated = db.update(TABLE_NAME, values, whereClause, null);
+					Log.d("DB", rowsUpdated+"");
+				}
+			}		
+			catch(Exception ex)
+			{
+				Log.d("DB", ex.getMessage());
+			}
+		}
+
+		if (rowID > 0)
+		{
+			Uri newUri = ContentUris.withAppendedId(uri, rowID);
+			//Uri _uri = ContentUris.withAppendedId(CONTENT_URI, rowID);
+			getContext().getContentResolver().notifyChange(newUri, null);
+			return newUri;
+		}
+		else if (rowsUpdated > 0)
+		{
+			//Uri _uri = ContentUris.withAppendedId(CONTENT_URI, rowsUpdated);
+			Uri newUri = ContentUris.withAppendedId(uri, rowsUpdated);
+			getContext().getContentResolver().notifyChange(newUri, null);
+			return newUri;
+		}
+		throw new SQLException("Failed to add a record into " + uri);
+	}
+
+
+
+	@Override
+	public boolean onCreate() {
+		// If you need to perform any one-time initialization task, please do it here.
+
+		Context context = getContext();
+		DatabaseHelper dbHelper = new DatabaseHelper(context);
+
+		db = dbHelper.getWritableDatabase();
+		return (db == null)? false:true;
+
+	}
+
+	@Override
+	public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs,
+			String sortOrder) {
+		/*
+		 * TODO: You need to implement this method. Note that you need to return a Cursor object
+		 * with the right format. If the formatting is not correct, then it is not going to work.
+		 * 
+		 * If you use SQLite, whatever is returned from SQLite is a Cursor object. However, you
+		 * still need to be careful because the formatting might still be incorrect.
+		 * 
+		 * If you use a file storage option, then it is your job to build a Cursor * object. I
+		 * recommend building a MatrixCursor described at:
+		 * http://developer.android.com/reference/android/database/MatrixCursor.html
+		 */
+
+
+
+		SQLiteQueryBuilder qb = new SQLiteQueryBuilder();
+		qb.setTables(TABLE_NAME);
+		//		qb.appendWhere("key=");
+		//qb.setProjectionMap(hmKeyValue);
+		selection = key +"="+ '"'+selection+'"';
+
+		Cursor c = null;
+		try
+		{
+			c = qb.query(db,	null,	selection, null, null, null, null);
+
+		}
+		catch(Exception e)
+		{
+			String g = e.getMessage();
+		}
+		c.setNotificationUri(getContext().getContentResolver(), uri);
+
+		return c;
+		/*Log.v("query", selection);
+		return null;*/
+	}
+
+	@Override
+	public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
+		// You do not need to implement this.
+		return 0;
+	}
+}
